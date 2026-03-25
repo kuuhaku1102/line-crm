@@ -56,6 +56,54 @@ export default function RootLayout({
                   📈 分析
                 </Link>
               </li>
+              <li className="border-t border-gray-600 pt-2 mt-2">
+                <Link
+                  href="/tags"
+                  className="block px-4 py-2 rounded hover:bg-gray-700 transition"
+                >
+                  🏷️ タグ管理
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/steps"
+                  className="block px-4 py-2 rounded hover:bg-gray-700 transition"
+                >
+                  📋 ステップ配信
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/scenarios"
+                  className="block px-4 py-2 rounded hover:bg-gray-700 transition"
+                >
+                  🔀 シナリオ
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/forms"
+                  className="block px-4 py-2 rounded hover:bg-gray-700 transition"
+                >
+                  📝 フォーム
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/scoring"
+                  className="block px-4 py-2 rounded hover:bg-gray-700 transition"
+                >
+                  ⭐ スコアリング
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/sources"
+                  className="block px-4 py-2 rounded hover:bg-gray-700 transition"
+                >
+                  🔍 流入経路
+                </Link>
+              </li>
             </ul>
             <div className="p-4 border-t border-gray-700">
               <p className="text-xs text-gray-400">v0.1.0</p>

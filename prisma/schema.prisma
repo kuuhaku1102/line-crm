@@ -20,16 +20,21 @@ model User {
   followedAt    DateTime @default(now())
   unfollowedAt  DateTime?
   isBlocked     Boolean  @default(false)
+  score         Int      @default(0)
+  source        String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  tags          UserTag[]
-  messageEvents MessageEvent[]
-  chatLogs      ChatLog[]
+  tags              UserTag[]
+  messageEvents     MessageEvent[]
+  chatLogs          ChatLog[]
+  stepSequences     UserStepSequence[]
+  formSubmissions   FormSubmission[]
 
   @@index([lineUserId])
   @@index([followedAt])
   @@index([isBlocked])
+  @@index([score])
 }
 
 model Message {
@@ -76,14 +81,27 @@ model Segment {
 }
 
 model Tag {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  color     String   @default("#999999")
-  createdAt DateTime @default(now())
+  id              String   @id @default(cuid())
+  name            String   @unique
+  color           String   @default("#999999")
+  createdAt       DateTime @default(now())
 
-  userTags  UserTag[]
+  userTags        UserTag[]
+  autoTagRules    AutoTagRule[]
 
   @@index([name])
+}
+
+model AutoTagRule {
+  id        String   @id @default(cuid())
+  keyword   String
+  tagId     String
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([keyword])
+  @@index([tagId])
 }
 
 model UserTag {
@@ -110,4 +128,122 @@ model ChatLog {
   @@index([lineUserId])
   @@index([createdAt])
   @@index([direction])
+}
+
+model StepSequence {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  steps       StepMessage[]
+  users       UserStepSequence[]
+}
+
+model StepMessage {
+  id            String   @id @default(cuid())
+  sequenceId    String
+  sequence      StepSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  dayOffset     Int
+  hour          Int      @default(10)
+  title         String
+  content       String
+  messageType   String   @default("text")
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  @@index([sequenceId])
+  @@index([dayOffset])
+}
+
+model UserStepSequence {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sequenceId    String
+  sequence      StepSequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  currentStep   Int      @default(0)
+  startedAt     DateTime @default(now())
+  completedAt   DateTime?
+  isActive      Boolean  @default(true)
+
+  @@unique([userId, sequenceId])
+  @@index([userId])
+  @@index([sequenceId])
+}
+
+model Scenario {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  triggerType String
+  triggerValue String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  actions     ScenarioAction[]
+}
+
+model ScenarioAction {
+  id             String   @id @default(cuid())
+  scenarioId     String
+  scenario       Scenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  actionType     String
+  actionValue    String
+  conditionType  String?
+  conditionValue String?
+  sortOrder      Int      @default(0)
+
+  @@index([scenarioId])
+}
+
+model Form {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  fields      FormField[]
+  submissions FormSubmission[]
+}
+
+model FormField {
+  id        String @id @default(cuid())
+  formId    String
+  form      Form   @relation(fields: [formId], references: [id], onDelete: Cascade)
+  label     String
+  fieldType String
+  options   String?
+  required  Boolean @default(false)
+  sortOrder Int     @default(0)
+
+  @@index([formId])
+}
+
+model FormSubmission {
+  id        String   @id @default(cuid())
+  formId    String
+  form      Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  data      String
+  createdAt DateTime @default(now())
+
+  @@index([formId])
+  @@index([userId])
+}
+
+model ScoringRule {
+  id          String   @id @default(cuid())
+  eventType   String
+  eventValue  String?
+  points      Int
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@index([eventType])
 }

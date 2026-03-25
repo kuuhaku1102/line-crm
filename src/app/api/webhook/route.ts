@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createHmac, timingSafeEqual } from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { lineClient } from '@/lib/line'
+import { sendConversion } from '@/lib/meta'
 
 // Force Node.js runtime (not Edge)
 export const runtime = 'nodejs'
@@ -72,7 +73,7 @@ async function handleEvent(event: any) {
 
   switch (event.type) {
     case 'follow':
-      await handleFollow(userId)
+      await handleFollow(userId, event)
       break
     case 'unfollow':
       await handleUnfollow(userId)
@@ -85,7 +86,7 @@ async function handleEvent(event: any) {
   }
 }
 
-async function handleFollow(lineUserId: string) {
+async function handleFollow(lineUserId: string, event: any) {
   try {
     // Get user profile from LINE
     let displayName = null
@@ -100,8 +101,15 @@ async function handleFollow(lineUserId: string) {
       console.error('Failed to get profile:', e)
     }
 
+    // Extract source from ref parameter if present
+    let source: string | null = null
+    if (event.replyToken) {
+      // Source can be extracted from context if available
+      source = event.source?.source || null
+    }
+
     // Upsert user in database
-    await prisma.user.upsert({
+    const user = await prisma.user.upsert({
       where: { lineUserId },
       update: {
         displayName,
@@ -109,14 +117,22 @@ async function handleFollow(lineUserId: string) {
         statusMessage,
         unfollowedAt: null,
         isBlocked: false,
+        source: source || undefined,
       },
       create: {
         lineUserId,
         displayName,
         pictureUrl,
         statusMessage,
+        source,
       },
     })
+
+    // Send to Meta CAPI
+    await sendConversion('Subscribe', {
+      email: undefined,
+    })
+
     console.log('User followed:', lineUserId, displayName)
   } catch (error) {
     console.error('handleFollow error:', error)
@@ -138,7 +154,7 @@ async function handleUnfollow(lineUserId: string) {
 async function handleMessage(lineUserId: string, event: any) {
   try {
     // Ensure user exists
-    await prisma.user.upsert({
+    const user = await prisma.user.upsert({
       where: { lineUserId },
       update: { updatedAt: new Date() },
       create: { lineUserId },
@@ -157,6 +173,83 @@ async function handleMessage(lineUserId: string, event: any) {
         content: messageType === 'text' ? messageText : JSON.stringify(event.message),
       },
     })
+
+    // Auto-tag based on keywords
+    if (messageType === 'text' && messageText) {
+      const rules = await prisma.autoTagRule.findMany({
+        where: { isActive: true },
+      })
+
+      for (const rule of rules) {
+        if (messageText.includes(rule.keyword)) {
+          // Check if user already has this tag
+          const existingTag = await prisma.userTag.findUnique({
+            where: {
+              userId_tagId: {
+                userId: user.id,
+                tagId: rule.tagId,
+              },
+            },
+          })
+
+          if (!existingTag) {
+            await prisma.userTag.create({
+              data: {
+                userId: user.id,
+                tagId: rule.tagId,
+              },
+            })
+            console.log('Auto-tagged user:', user.id, 'with tag:', rule.tagId)
+          }
+        }
+      }
+
+      // Apply scoring rules
+      const scoringRules = await prisma.scoringRule.findMany({
+        where: {
+          isActive: true,
+          eventType: 'message_sent',
+        },
+      })
+
+      let scoreToAdd = 0
+      for (const rule of scoringRules) {
+        if (!rule.eventValue || messageText.includes(rule.eventValue)) {
+          scoreToAdd += rule.points
+        }
+      }
+
+      if (scoreToAdd > 0) {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { score: { increment: scoreToAdd } },
+        })
+        console.log('Added score:', scoreToAdd, 'to user:', user.id)
+      }
+
+      // Check scenario triggers
+      const scenarios = await prisma.scenario.findMany({
+        where: {
+          isActive: true,
+          triggerType: 'keyword',
+        },
+      })
+
+      for (const scenario of scenarios) {
+        if (scenario.triggerValue && messageText.includes(scenario.triggerValue)) {
+          // Execute scenario actions
+          const actions = await prisma.scenarioAction.findMany({
+            where: { scenarioId: scenario.id },
+            orderBy: { sortOrder: 'asc' },
+          })
+
+          for (const action of actions) {
+            await executeScenarioAction(user.id, action, lineUserId)
+          }
+          console.log('Executed scenario:', scenario.id, 'for user:', user.id)
+        }
+      }
+    }
 
     // Auto-reply with echo (simple for now)
     if (messageType === 'text' && messageText) {
@@ -185,6 +278,62 @@ async function handleMessage(lineUserId: string, event: any) {
     }
   } catch (error) {
     console.error('handleMessage error:', error)
+  }
+}
+
+async function executeScenarioAction(userId: string, action: any, lineUserId: string) {
+  try {
+    switch (action.actionType) {
+      case 'send_message':
+        const messageData = JSON.parse(action.actionValue)
+        await lineClient.pushMessage({
+          to: lineUserId,
+          messages: [messageData],
+        })
+        break
+
+      case 'add_tag':
+        const tagName = action.actionValue
+        const tag = await prisma.tag.findUnique({
+          where: { name: tagName },
+        })
+        if (tag) {
+          await prisma.userTag.create({
+            data: {
+              userId,
+              tagId: tag.id,
+            },
+          }).catch(() => {
+            // Already has tag
+          })
+        }
+        break
+
+      case 'add_score':
+        const points = parseInt(action.actionValue)
+        await prisma.user.update({
+          where: { id: userId },
+          data: { score: { increment: points } },
+        })
+        break
+
+      case 'start_sequence':
+        const sequenceId = action.actionValue
+        await prisma.userStepSequence.create({
+          data: {
+            userId,
+            sequenceId,
+          },
+        }).catch(() => {
+          // Already enrolled
+        })
+        break
+
+      default:
+        console.log('Unknown action type:', action.actionType)
+    }
+  } catch (error) {
+    console.error('Error executing scenario action:', error)
   }
 }
 
