@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHmac, timingSafeEqual } from 'crypto'
+import { prisma } from '@/lib/prisma'
+import { lineClient } from '@/lib/line'
 
 // Force Node.js runtime (not Edge)
 export const runtime = 'nodejs'
@@ -40,7 +42,6 @@ export async function POST(req: NextRequest) {
       const parsed = JSON.parse(body)
       events = parsed.events || []
     } catch {
-      // Body might not be valid JSON during verification
       return NextResponse.json({ message: 'OK' })
     }
 
@@ -66,23 +67,103 @@ export async function POST(req: NextRequest) {
 }
 
 async function handleEvent(event: any) {
-  console.log('Processing event:', event.type)
+  const userId = event.source?.userId
+  if (!userId) return
 
   switch (event.type) {
     case 'follow':
-      console.log('User followed:', event.source?.userId)
+      await handleFollow(userId)
       break
     case 'unfollow':
-      console.log('User unfollowed:', event.source?.userId)
+      await handleUnfollow(userId)
       break
     case 'message':
-      console.log('Message from user:', event.source?.userId, event.message?.type)
-      break
-    case 'postback':
-      console.log('Postback event:', event.postback)
+      await handleMessage(userId, event)
       break
     default:
       console.log('Unknown event type:', event.type)
+  }
+}
+
+async function handleFollow(lineUserId: string) {
+  try {
+    // Get user profile from LINE
+    let displayName = null
+    let pictureUrl = null
+    let statusMessage = null
+    try {
+      const profile = await lineClient.getProfile(lineUserId)
+      displayName = profile.displayName
+      pictureUrl = profile.pictureUrl || null
+      statusMessage = profile.statusMessage || null
+    } catch (e) {
+      console.error('Failed to get profile:', e)
+    }
+
+    // Upsert user in database
+    await prisma.user.upsert({
+      where: { lineUserId },
+      update: {
+        displayName,
+        pictureUrl,
+        statusMessage,
+        unfollowedAt: null,
+        isBlocked: false,
+      },
+      create: {
+        lineUserId,
+        displayName,
+        pictureUrl,
+        statusMessage,
+      },
+    })
+    console.log('User followed:', lineUserId, displayName)
+  } catch (error) {
+    console.error('handleFollow error:', error)
+  }
+}
+
+async function handleUnfollow(lineUserId: string) {
+  try {
+    await prisma.user.update({
+      where: { lineUserId },
+      data: { unfollowedAt: new Date() },
+    })
+    console.log('User unfollowed:', lineUserId)
+  } catch (error) {
+    console.error('handleUnfollow error:', error)
+  }
+}
+
+async function handleMessage(lineUserId: string, event: any) {
+  try {
+    // Ensure user exists
+    await prisma.user.upsert({
+      where: { lineUserId },
+      update: { updatedAt: new Date() },
+      create: { lineUserId },
+    })
+
+    const messageType = event.message?.type || 'unknown'
+    const messageText = event.message?.text || ''
+    console.log('Message from', lineUserId, ':', messageType, messageText.substring(0, 50))
+
+    // Auto-reply with echo (simple for now)
+    if (messageType === 'text' && messageText) {
+      try {
+        await lineClient.replyMessage({
+          replyToken: event.replyToken,
+          messages: [{
+            type: 'text',
+            text: `受信しました: ${messageText}`,
+          }],
+        })
+      } catch (e) {
+        console.error('Reply failed:', e)
+      }
+    }
+  } catch (error) {
+    console.error('handleMessage error:', error)
   }
 }
 
