@@ -148,15 +148,36 @@ async function handleMessage(lineUserId: string, event: any) {
     const messageText = event.message?.text || ''
     console.log('Message from', lineUserId, ':', messageType, messageText.substring(0, 50))
 
+    // Save incoming message to ChatLog
+    await prisma.chatLog.create({
+      data: {
+        lineUserId,
+        direction: 'INCOMING',
+        messageType,
+        content: messageType === 'text' ? messageText : JSON.stringify(event.message),
+      },
+    })
+
     // Auto-reply with echo (simple for now)
     if (messageType === 'text' && messageText) {
       try {
+        const replyText = `受信しました: ${messageText}`
         await lineClient.replyMessage({
           replyToken: event.replyToken,
           messages: [{
             type: 'text',
-            text: `受信しました: ${messageText}`,
+            text: replyText,
           }],
+        })
+
+        // Save outgoing reply to ChatLog
+        await prisma.chatLog.create({
+          data: {
+            lineUserId,
+            direction: 'OUTGOING',
+            messageType: 'text',
+            content: replyText,
+          },
         })
       } catch (e) {
         console.error('Reply failed:', e)

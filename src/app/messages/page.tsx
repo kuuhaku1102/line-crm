@@ -12,10 +12,21 @@ interface Message {
   createdAt: string
 }
 
+interface Tag {
+  id: string
+  name: string
+  color: string
+}
+
 export default function MessagesPage() {
   const [messages, setMessages] = useState<Message[]>([])
+  const [tags, setTags] = useState<Tag[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [sendingMessageId, setSendingMessageId] = useState<string | null>(null)
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [selectedMessage, setSelectedMessage] = useState<Message | null>(null)
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [formData, setFormData] = useState({
     title: '',
     content: '',
@@ -24,6 +35,7 @@ export default function MessagesPage() {
 
   useEffect(() => {
     fetchMessages()
+    fetchTags()
   }, [])
 
   const fetchMessages = async () => {
@@ -35,6 +47,16 @@ export default function MessagesPage() {
       console.error('Failed to fetch messages:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchTags = async () => {
+    try {
+      const response = await fetch('/api/tags')
+      const data = await response.json()
+      setTags(data)
+    } catch (error) {
+      console.error('Failed to fetch tags:', error)
     }
   }
 
@@ -58,6 +80,54 @@ export default function MessagesPage() {
     } catch (error) {
       console.error('Failed to create message:', error)
     }
+  }
+
+  const handleSendClick = (message: Message) => {
+    setSelectedMessage(message)
+    setSelectedTags([])
+    setShowConfirmDialog(true)
+  }
+
+  const handleConfirmSend = async () => {
+    if (!selectedMessage) return
+
+    setSendingMessageId(selectedMessage.id)
+    setShowConfirmDialog(false)
+
+    try {
+      const response = await fetch('/api/messages/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messageId: selectedMessage.id,
+          tagFilters: selectedTags.length > 0 ? selectedTags : undefined,
+        }),
+      })
+
+      if (response.ok) {
+        await fetchMessages()
+        alert('メッセージを配信しました')
+      } else {
+        const error = await response.json()
+        alert(`配信に失敗しました: ${error.message}`)
+      }
+    } catch (error) {
+      console.error('Failed to send message:', error)
+      alert('配信処理中にエラーが発生しました')
+    } finally {
+      setSendingMessageId(null)
+      setSelectedMessage(null)
+    }
+  }
+
+  const toggleTagFilter = (tagName: string) => {
+    setSelectedTags((prev) =>
+      prev.includes(tagName)
+        ? prev.filter((t) => t !== tagName)
+        : [...prev, tagName]
+    )
   }
 
   return (
@@ -124,6 +194,14 @@ export default function MessagesPage() {
               </select>
             </div>
 
+            {formData.type === 'FLEX' && (
+              <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded">
+                <p className="text-sm text-yellow-700">
+                  Flex MessageはJSON形式で入力してください。LINE公式ドキュメントを参照してください。
+                </p>
+              </div>
+            )}
+
             <button
               type="submit"
               className="px-6 py-2 bg-line-green text-white rounded font-medium hover:bg-opacity-90 transition"
@@ -131,6 +209,62 @@ export default function MessagesPage() {
               保存
             </button>
           </form>
+        </div>
+      )}
+
+      {/* Confirm Send Dialog */}
+      {showConfirmDialog && selectedMessage && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">
+              メッセージを配信しますか？
+            </h3>
+            <p className="text-gray-600 mb-4">
+              タイトル: {selectedMessage.title}
+            </p>
+
+            {tags.length > 0 && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  タグでフィルター（選択なしの場合は全ユーザーに配信）
+                </label>
+                <div className="space-y-2">
+                  {tags.map((tag) => (
+                    <label key={tag.id} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedTags.includes(tag.name)}
+                        onChange={() => toggleTagFilter(tag.name)}
+                        className="w-4 h-4 rounded border-gray-300 text-line-green"
+                      />
+                      <span
+                        className="px-2 py-1 rounded text-xs font-medium text-white"
+                        style={{ backgroundColor: tag.color }}
+                      >
+                        {tag.name}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowConfirmDialog(false)}
+                className="px-4 py-2 border border-gray-300 rounded font-medium text-gray-700 hover:bg-gray-50 transition"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleConfirmSend}
+                disabled={sendingMessageId === selectedMessage.id}
+                className="px-4 py-2 bg-line-green text-white rounded font-medium hover:bg-opacity-90 transition disabled:opacity-50"
+              >
+                {sendingMessageId === selectedMessage.id ? '配信中...' : '配信'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -154,6 +288,9 @@ export default function MessagesPage() {
                 </th>
                 <th className="px-6 py-4 text-left text-sm font-medium text-gray-700">
                   作成日
+                </th>
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-700">
+                  アクション
                 </th>
               </tr>
             </thead>
@@ -195,6 +332,17 @@ export default function MessagesPage() {
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
                       {new Date(message.createdAt).toLocaleDateString('ja-JP')}
+                    </td>
+                    <td className="px-6 py-4">
+                      {!message.sentAt && (
+                        <button
+                          onClick={() => handleSendClick(message)}
+                          disabled={sendingMessageId === message.id}
+                          className="px-3 py-1 bg-line-green text-white rounded text-xs font-medium hover:bg-opacity-90 transition disabled:opacity-50"
+                        >
+                          {sendingMessageId === message.id ? '配信中...' : '配信'}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))

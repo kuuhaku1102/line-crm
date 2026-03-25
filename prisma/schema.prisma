@@ -25,6 +25,7 @@ model User {
 
   tags          UserTag[]
   messageEvents MessageEvent[]
+  chatLogs      ChatLog[]
 
   @@index([lineUserId])
   @@index([followedAt])
@@ -95,4 +96,18 @@ model UserTag {
   @@unique([userId, tagId])
   @@index([userId])
   @@index([tagId])
+}
+
+model ChatLog {
+  id        String   @id @default(cuid())
+  lineUserId String
+  user      User?    @relation(fields: [lineUserId], references: [lineUserId], onDelete: Cascade)
+  direction String   // INCOMING, OUTGOING
+  messageType String  // text, image, etc
+  content   String   // JSON for complex messages, plain text for simple
+  createdAt DateTime @default(now())
+
+  @@index([lineUserId])
+  @@index([createdAt])
+  @@index([direction])
 }

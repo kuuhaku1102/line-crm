@@ -1,50 +1,72 @@
-import { prisma } from '@/lib/prisma'
+'use client'
 
-async function getCustomers() {
-  try {
-    const customers = await prisma.user.findMany({
-      include: {
-        tags: {
-          include: {
-            tag: true,
-          },
-        },
-      },
-      orderBy: {
-        followedAt: 'desc',
-      },
-      take: 50,
-    })
-    return customers
-  } catch (error) {
-    console.error('Failed to fetch customers:', error)
-    return []
+import React, { useState, useEffect } from 'react'
+import Link from 'next/link'
+
+interface Tag {
+  id: string
+  tag: {
+    id: string
+    name: string
+    color: string
   }
 }
 
-async function getStats() {
-  try {
-    const total = await prisma.user.count()
-    const active = await prisma.user.count({
-      where: { isBlocked: false, unfollowedAt: null },
-    })
-    const blocked = await prisma.user.count({
-      where: { isBlocked: true },
-    })
-    const unfollowed = await prisma.user.count({
-      where: { unfollowedAt: { not: null } },
-    })
-
-    return { total, active, blocked, unfollowed }
-  } catch (error) {
-    console.error('Failed to fetch stats:', error)
-    return { total: 0, active: 0, blocked: 0, unfollowed: 0 }
-  }
+interface Customer {
+  id: string
+  lineUserId: string
+  displayName: string | null
+  pictureUrl: string | null
+  followedAt: string
+  unfollowedAt: string | null
+  isBlocked: boolean
+  tags: Tag[]
 }
 
-export default async function CustomersPage() {
-  const customers = await getCustomers()
-  const stats = await getStats()
+export default function CustomersPage() {
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [stats, setStats] = useState({
+    total: 0,
+    active: 0,
+    blocked: 0,
+    unfollowed: 0,
+  })
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetchData()
+  }, [])
+
+  const fetchData = async () => {
+    try {
+      const [customersRes, statsRes] = await Promise.all([
+        fetch('/api/customers'),
+        fetch('/api/customers/stats'),
+      ])
+
+      if (customersRes.ok) {
+        const data = await customersRes.json()
+        setCustomers(data)
+      }
+
+      if (statsRes.ok) {
+        const data = await statsRes.json()
+        setStats(data)
+      }
+    } catch (error) {
+      console.error('Failed to fetch data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="p-8">
+        <div className="text-center text-gray-500">読み込み中...</div>
+      </div>
+    )
+  }
 
   return (
     <div className="p-8">
@@ -101,23 +123,25 @@ export default async function CustomersPage() {
                 customers.map((customer) => (
                   <tr key={customer.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        {customer.pictureUrl && (
-                          <img
-                            src={customer.pictureUrl}
-                            alt={customer.displayName || 'User'}
-                            className="w-10 h-10 rounded-full object-cover"
-                          />
-                        )}
-                        <div>
-                          <p className="font-medium text-gray-900">
-                            {customer.displayName || 'No Name'}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {customer.lineUserId}
-                          </p>
+                      <Link href={`/customers/${customer.id}`}>
+                        <div className="flex items-center gap-3 cursor-pointer hover:opacity-70 transition">
+                          {customer.pictureUrl && (
+                            <img
+                              src={customer.pictureUrl}
+                              alt={customer.displayName || 'User'}
+                              className="w-10 h-10 rounded-full object-cover"
+                            />
+                          )}
+                          <div>
+                            <p className="font-medium text-gray-900 hover:text-line-green">
+                              {customer.displayName || 'No Name'}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {customer.lineUserId}
+                            </p>
+                          </div>
                         </div>
-                      </div>
+                      </Link>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex gap-1">

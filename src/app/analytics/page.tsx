@@ -7,6 +7,12 @@ interface RecentEvent {
   message: { title: string } | null
 }
 
+interface MessageDelivery {
+  title: string
+  sentCount: number
+  sentAt: Date | null
+}
+
 async function getAnalytics() {
   try {
     const messageDeliveries = await prisma.messageEvent.groupBy({
@@ -29,6 +35,49 @@ async function getAnalytics() {
       _sum: { sentCount: true },
     })
 
+    // Get message delivery history
+    const sentMessages = await prisma.message.findMany({
+      where: {
+        sentAt: { not: null },
+      },
+      select: {
+        title: true,
+        sentCount: true,
+        sentAt: true,
+      },
+      orderBy: { sentAt: 'desc' },
+      take: 10,
+    })
+
+    // Get friend follow trend (past 30 days)
+    const thirtyDaysAgo = new Date()
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
+    const followTrend = await prisma.user.groupBy({
+      by: [],
+      where: {
+        followedAt: { gte: thirtyDaysAgo },
+      },
+      _count: true,
+    })
+
+    const totalActiveUsers = await prisma.user.count({
+      where: {
+        isBlocked: false,
+        unfollowedAt: null,
+      },
+    })
+
+    const totalUnfollowed = await prisma.user.count({
+      where: {
+        unfollowedAt: { not: null },
+      },
+    })
+
+    const followRate = totalActiveUsers > 0
+      ? ((totalActiveUsers / (totalActiveUsers + totalUnfollowed)) * 100).toFixed(1)
+      : '0'
+
     return {
       messageDeliveries: Object.fromEntries(
         messageDeliveries.map((d: { eventType: string; _count: number }) => [d.eventType, d._count])
@@ -38,6 +87,13 @@ async function getAnalytics() {
         totalMessages: messageStats._count,
         totalSent: messageStats._sum.sentCount || 0,
       },
+      sentMessages: sentMessages as MessageDelivery[],
+      followTrend: {
+        newFollowsLast30Days: followTrend._count,
+        totalActive: totalActiveUsers,
+        totalUnfollowed: totalUnfollowed,
+        followRate: parseFloat(followRate),
+      },
     }
   } catch (error) {
     console.error('Failed to fetch analytics:', error)
@@ -45,6 +101,13 @@ async function getAnalytics() {
       messageDeliveries: {},
       recentEvents: [],
       messageStats: { totalMessages: 0, totalSent: 0 },
+      sentMessages: [],
+      followTrend: {
+        newFollowsLast30Days: 0,
+        totalActive: 0,
+        totalUnfollowed: 0,
+        followRate: 0,
+      },
     }
   }
 }
@@ -95,6 +158,63 @@ export default async function AnalyticsPage() {
                 </span>
               </div>
             ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Friend Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-100">
+          <h2 className="text-lg font-bold text-gray-900 mb-4">友だち統計（過去30日）</h2>
+          <div className="space-y-3">
+            <div className="flex justify-between">
+              <span className="text-gray-600">新規フォロー</span>
+              <span className="font-bold text-line-green">
+                {analytics.followTrend.newFollowsLast30Days}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">アクティブ</span>
+              <span className="font-bold text-gray-900">
+                {analytics.followTrend.totalActive}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">フォロー解除</span>
+              <span className="font-bold text-red-600">
+                {analytics.followTrend.totalUnfollowed}
+              </span>
+            </div>
+            <div className="flex justify-between pt-3 border-t border-gray-100">
+              <span className="text-gray-600">フォロー率</span>
+              <span className="font-bold text-blue-600">
+                {analytics.followTrend.followRate.toFixed(1)}%
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-100">
+          <h2 className="text-lg font-bold text-gray-900 mb-4">配信実績</h2>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {analytics.sentMessages.length === 0 ? (
+              <p className="text-gray-500 text-sm">配信履歴がありません</p>
+            ) : (
+              analytics.sentMessages.map((msg, idx) => (
+                <div
+                  key={idx}
+                  className="flex justify-between items-start text-sm pb-2 border-b border-gray-100 last:border-0"
+                >
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-900">{msg.title}</p>
+                    <p className="text-xs text-gray-500">
+                      {new Date(msg.sentAt || '').toLocaleDateString('ja-JP')}
+                    </p>
+                  </div>
+                  <p className="font-bold text-line-green ml-2">{msg.sentCount}</p>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>
