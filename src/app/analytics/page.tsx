@@ -53,12 +53,10 @@ async function getAnalytics() {
     const thirtyDaysAgo = new Date()
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
-    const followTrend = await prisma.user.groupBy({
-      by: [],
+    const newFollowsCount = await prisma.user.count({
       where: {
         followedAt: { gte: thirtyDaysAgo },
       },
-      _count: true,
     })
 
     const totalActiveUsers = await prisma.user.count({
@@ -89,7 +87,7 @@ async function getAnalytics() {
       },
       sentMessages: sentMessages as MessageDelivery[],
       followTrend: {
-        newFollowsLast30Days: followTrend._count,
+        newFollowsLast30Days: newFollowsCount,
         totalActive: totalActiveUsers,
         totalUnfollowed: totalUnfollowed,
         followRate: parseFloat(followRate),
