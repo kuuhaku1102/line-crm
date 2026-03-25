@@ -1,0 +1,97 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  lineUserId    String   @unique
+  displayName   String?
+  pictureUrl    String?
+  statusMessage String?
+  followedAt    DateTime @default(now())
+  unfollowedAt  DateTime?
+  isBlocked     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tags          UserTag[]
+  messageEvents MessageEvent[]
+
+  @@index([lineUserId])
+  @@index([followedAt])
+  @@index([isBlocked])
+}
+
+model Message {
+  id            String   @id @default(cuid())
+  title         String
+  content       String
+  type          String   @default("TEXT") // TEXT, FLEX, IMAGE
+  segmentFilter String?  // JSON array of segment conditions
+  sentAt        DateTime?
+  sentCount     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  messageEvents MessageEvent[]
+
+  @@index([createdAt])
+  @@index([sentAt])
+}
+
+model MessageEvent {
+  id        String   @id @default(cuid())
+  messageId String
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  lineUserId String
+  user      User     @relation(fields: [lineUserId], references: [lineUserId], onDelete: Cascade)
+  eventType String   // DELIVERED, OPENED, CLICKED
+  createdAt DateTime @default(now())
+
+  @@index([messageId])
+  @@index([lineUserId])
+  @@index([eventType])
+  @@index([createdAt])
+}
+
+model Segment {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  conditions  String   // JSON object with conditions
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([name])
+}
+
+model Tag {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String   @default("#999999")
+  createdAt DateTime @default(now())
+
+  userTags  UserTag[]
+
+  @@index([name])
+}
+
+model UserTag {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tagId  String
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tagId])
+  @@index([userId])
+  @@index([tagId])
+}
