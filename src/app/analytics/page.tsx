@@ -1,5 +1,12 @@
 import { prisma } from '@/lib/prisma'
 
+interface RecentEvent {
+  id: string
+  eventType: string
+  createdAt: Date
+  message: { title: string } | null
+}
+
 async function getAnalytics() {
   try {
     const messageDeliveries = await prisma.messageEvent.groupBy({
@@ -24,7 +31,7 @@ async function getAnalytics() {
 
     return {
       messageDeliveries: Object.fromEntries(
-        messageDeliveries.map((d) => [d.eventType, d._count])
+        messageDeliveries.map((d: { eventType: string; _count: number }) => [d.eventType, d._count])
       ),
       recentEvents,
       messageStats: {
@@ -121,7 +128,7 @@ export default async function AnalyticsPage() {
                   </td>
                 </tr>
               ) : (
-                analytics.recentEvents.map((event) => (
+                analytics.recentEvents.map((event: RecentEvent) => (
                   <tr key={event.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 font-medium text-gray-900">
                       {event.message?.title || 'Unknown'}
