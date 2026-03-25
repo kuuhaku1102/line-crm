@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { middleware, MiddlewareConfig } from '@line/bot-sdk'
 import { prisma } from '@/lib/prisma'
 
 const channelSecret = process.env.LINE_CHANNEL_SECRET || ''
