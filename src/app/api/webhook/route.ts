@@ -149,6 +149,6 @@ function verifySignature(body: string, secret: string, signature: string): boole
 }
 
 // Health check endpoint
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   return NextResponse.json({ status: 'ok' })
 }

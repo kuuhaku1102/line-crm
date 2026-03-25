@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
 // GET messages
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
     const messages = await prisma.message.findMany({
       orderBy: {
