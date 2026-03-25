@@ -58,14 +58,16 @@ export async function POST(_req: NextRequest) {
       ) {
         // Send message
         try {
-          const message = {
-            type: currentStep.messageType === 'flex' ? 'flex' : 'text',
-            text: currentStep.title,
-            altText: currentStep.title,
-            ...(currentStep.messageType === 'text' && {
-              text: currentStep.content,
-            }),
-          }
+          const message: any = currentStep.messageType === 'flex'
+            ? {
+                type: 'flex',
+                altText: currentStep.title,
+                contents: JSON.parse(currentStep.content),
+              }
+            : {
+                type: 'text',
+                text: currentStep.content,
+              }
 
           await lineClient.pushMessage({
             to: userSeq.user.lineUserId,
